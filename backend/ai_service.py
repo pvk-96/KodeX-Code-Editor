@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class AIService:
     def __init__(self):
         self.api_key = os.environ.get('GEMINI_API_KEY')
+        print(f"Loading API key: {self.api_key[:10]}..." if self.api_key else "No API key found")
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
     
