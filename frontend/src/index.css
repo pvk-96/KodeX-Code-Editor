@@ -9,9 +9,59 @@ body {
         "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow: hidden; /* Prevent body scroll */
 }
 
 code {
     font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
         monospace;
+}
+
+/* Custom styles for code editor */
+.code-editor-container {
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Custom scrollbar for terminal and file explorer */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #374151;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #6B7280;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+}
+
+/* Animation for file tree */
+.file-tree-enter {
+    opacity: 0;
+    transform: translateX(-10px);
+}
+
+.file-tree-enter-active {
+    opacity: 1;
+    transform: translateX(0);
+    transition: opacity 200ms, transform 200ms;
+}
+
+/* Syntax highlighting base styles */
+.syntax-highlight {
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+    line-height: 1.5;
+}
+
+/* Theme variables */
+:root {
+    --theme-primary: #1e1e1e;
+    --theme-secondary: #252526;
+    --theme-accent: #007acc;
 }
