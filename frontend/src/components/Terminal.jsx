@@ -156,7 +156,7 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
 
   const getPrompt = () => {
     const dir = workingDirectory.replace('/tmp/codeeditor', '~');
-    return `user@codeeditor:${dir}$`;
+    return `user@kodex:${dir}$`;
   };
 
   if (!isOpen) {
