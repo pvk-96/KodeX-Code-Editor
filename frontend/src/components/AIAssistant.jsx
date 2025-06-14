@@ -4,12 +4,14 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
-import { mockAIResponses } from '../mock/mockData';
+import { aiAPI } from '../services/api';
 
 const AIAssistant = ({ isOpen, onToggle, onInsertCode }) => {
   const [query, setQuery] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [error, setError] = useState(null);
   const scrollAreaRef = useRef(null);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ const AIAssistant = ({ isOpen, onToggle, onInsertCode }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || isLoading) return;
 
     const userMessage = {
       type: 'user',
@@ -30,45 +32,46 @@ const AIAssistant = ({ isOpen, onToggle, onInsertCode }) => {
 
     setChatHistory(prev => [...prev, userMessage]);
     setIsLoading(true);
+    setError(null);
+    const currentQuery = query;
     setQuery('');
 
-    // Simulate AI response with mock data
-    setTimeout(() => {
-      const mockResponse = mockAIResponses.find(r => 
-        r.query.toLowerCase().includes(query.toLowerCase()) ||
-        query.toLowerCase().includes(r.query.toLowerCase().split(' ')[0])
-      ) || {
-        response: `Here's a helpful response about "${query}". This is a mock AI response demonstrating the functionality. In the real implementation, this would be powered by Gemini AI.
-
-\`\`\`javascript
-// Example code snippet
-function example() {
-    console.log('This is example code');
-}
-\`\`\`
-
-The AI assistant can help with:
-- Code completion and suggestions
-- Debugging assistance
-- Best practices
-- Language-specific questions
-- Architecture advice`,
-        timestamp: new Date()
-      };
+    try {
+      const response = await aiAPI.sendMessage(currentQuery, sessionId);
+      
+      // Set session ID if this is the first message
+      if (!sessionId) {
+        setSessionId(response.session_id);
+      }
 
       const aiMessage = {
         type: 'ai',
-        content: mockResponse.response,
-        timestamp: new Date()
+        content: response.message.content,
+        code_blocks: response.message.code_blocks || [],
+        timestamp: new Date(response.message.timestamp)
       };
 
       setChatHistory(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError('Failed to send message. Please try again.');
+      
+      const errorMessage = {
+        type: 'ai',
+        content: 'Sorry, I encountered an error processing your request. Please try again.',
+        timestamp: new Date()
+      };
+      
+      setChatHistory(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000 + Math.random() * 2000);
+    }
   };
 
   const clearChat = () => {
     setChatHistory([]);
+    setSessionId(null);
+    setError(null);
   };
 
   const extractCodeBlocks = (text) => {
@@ -86,8 +89,19 @@ The AI assistant can help with:
     return blocks;
   };
 
-  const formatMessage = (content) => {
-    const parts = content.split(/(```[\s\S]*?```)/g);
+  const formatMessage = (message) => {
+    if (message.type === 'user') {
+      return <div className="whitespace-pre-wrap">{message.content}</div>;
+    }
+
+    // Use code_blocks from AI response if available, otherwise extract from content
+    const codeBlocks = message.code_blocks || extractCodeBlocks(message.content);
+    
+    if (codeBlocks.length === 0) {
+      return <div className="whitespace-pre-wrap">{message.content}</div>;
+    }
+
+    const parts = message.content.split(/(```[\s\S]*?```)/g);
     
     return parts.map((part, index) => {
       if (part.startsWith('```') && part.endsWith('```')) {
@@ -167,6 +181,13 @@ The AI assistant can help with:
         </div>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700">
+          <div className="text-red-300 text-sm">{error}</div>
+        </div>
+      )}
+
       {/* Chat Area */}
       <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
         {chatHistory.length === 0 ? (
@@ -174,6 +195,7 @@ The AI assistant can help with:
             <div className="text-4xl mb-4">🤖</div>
             <h4 className="font-medium mb-2">AI Assistant Ready</h4>
             <p className="text-sm">Ask me anything about coding, debugging, or best practices!</p>
+            <p className="text-xs mt-2 opacity-75">Powered by Google Gemini AI</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -190,10 +212,10 @@ The AI assistant can help with:
                   }`}
                 >
                   <div className="text-sm">
-                    {message.type === 'ai' ? formatMessage(message.content) : message.content}
+                    {formatMessage(message)}
                   </div>
                   <div className="text-xs opacity-70 mt-2">
-                    {message.timestamp.toLocaleTimeString()}
+                    {new Date(message.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
               </div>
@@ -207,7 +229,7 @@ The AI assistant can help with:
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                     </div>
-                    <span className="text-sm">AI is thinking...</span>
+                    <span className="text-sm">Gemini is thinking...</span>
                   </div>
                 </div>
               </div>
@@ -232,7 +254,7 @@ The AI assistant can help with:
             disabled={isLoading || !query.trim()}
             className="px-4"
           >
-            Send
+            {isLoading ? '...' : 'Send'}
           </Button>
         </div>
       </form>
