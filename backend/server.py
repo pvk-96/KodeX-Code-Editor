@@ -28,7 +28,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # Create the main app without a prefix
-app = FastAPI(title="CodeEditor AI API", version="1.0.0")
+app = FastAPI(title="KodeX API", version="1.0.0")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -329,7 +329,7 @@ async def update_user_preferences(request: UpdatePreferencesRequest):
 # Health check endpoint
 @api_router.get("/")
 async def root():
-    return {"message": "CodeEditor AI API is running", "version": "1.0.0"}
+    return {"message": "KodeX API is running", "version": "1.0.0"}
 
 @api_router.get("/health")
 async def health_check():

@@ -11,7 +11,7 @@ import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
 import { preferencesAPI, healthAPI } from "./services/api";
 
-const CodeEditorApp = () => {
+const KodeXApp = () => {
   const [activeFile, setActiveFile] = useState(null);
   const [selectedFileId, setSelectedFileId] = useState(null);
   const [theme, setTheme] = useState({ id: 'dark', name: 'Dark', primary: '#1e1e1e', secondary: '#252526', accent: '#007acc' });
@@ -111,9 +111,9 @@ const CodeEditorApp = () => {
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-md flex items-center justify-center">
-              <span className="text-white text-xs font-bold">CE</span>
+              <span className="text-white text-xs font-bold">KX</span>
             </div>
-            <h1 className="text-lg font-semibold text-gray-200">CodeEditor AI</h1>
+            <h1 className="text-lg font-semibold text-gray-200">KodeX</h1>
           </div>
           
           <div className="flex items-center space-x-2">
@@ -247,7 +247,7 @@ function App() {
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<CodeEditorApp />} />
+          <Route path="/" element={<KodeXApp />} />
         </Routes>
       </BrowserRouter>
     </div>
