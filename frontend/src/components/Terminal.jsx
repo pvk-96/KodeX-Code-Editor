@@ -3,14 +3,16 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { mockTerminalHistory } from '../mock/mockData';
+import { terminalAPI } from '../services/api';
 
 const Terminal = ({ isOpen, onToggle, activeFile }) => {
   const [command, setCommand] = useState('');
-  const [history, setHistory] = useState(mockTerminalHistory);
+  const [history, setHistory] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [commandHistory, setCommandHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [workingDirectory, setWorkingDirectory] = useState('/tmp/codeeditor');
+  const [error, setError] = useState(null);
   const terminalRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -26,6 +28,28 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
     }
   }, [isOpen]);
 
+  // Load command history on mount
+  useEffect(() => {
+    if (isOpen) {
+      loadHistory();
+    }
+  }, [isOpen]);
+
+  const loadHistory = async () => {
+    try {
+      const terminalHistory = await terminalAPI.getHistory(20);
+      setHistory(terminalHistory.map(cmd => ({
+        command: cmd.command,
+        output: cmd.output,
+        type: cmd.exit_code === 0 ? 'success' : 'error',
+        working_directory: cmd.working_directory,
+        execution_time: cmd.execution_time
+      })));
+    } catch (error) {
+      console.error('Error loading terminal history:', error);
+    }
+  };
+
   const executeCommand = async (cmd) => {
     const trimmedCmd = cmd.trim();
     if (!trimmedCmd) return;
@@ -34,82 +58,58 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
     setCommandHistory(prev => [...prev, trimmedCmd]);
     setHistoryIndex(-1);
 
-    // Add command to terminal history
+    // Add command to terminal display
     const commandEntry = {
       command: trimmedCmd,
       output: '',
-      type: 'running'
+      type: 'running',
+      working_directory: workingDirectory
     };
 
     setHistory(prev => [...prev, commandEntry]);
     setIsRunning(true);
+    setError(null);
 
-    // Simulate command execution
-    setTimeout(() => {
-      let output = '';
-      let type = 'success';
+    try {
+      const response = await terminalAPI.executeCommand(trimmedCmd, workingDirectory);
+      const result = response.command;
 
-      // Mock command responses
-      if (trimmedCmd.startsWith('ls')) {
-        output = 'index.html\nscript.js\nstyles.css\nhello.py\nREADME.md';
-      } else if (trimmedCmd.startsWith('pwd')) {
-        output = '/home/user/projects';
-      } else if (trimmedCmd.startsWith('whoami')) {
-        output = 'developer';
-      } else if (trimmedCmd.startsWith('date')) {
-        output = new Date().toString();
-      } else if (trimmedCmd.startsWith('echo')) {
-        output = trimmedCmd.substring(5);
-      } else if (trimmedCmd.startsWith('cat') && activeFile) {
-        output = activeFile.content || 'File is empty';
-      } else if (trimmedCmd.startsWith('python') || trimmedCmd.startsWith('py')) {
-        if (activeFile && activeFile.language === 'python') {
-          output = 'Hello from Python!\nScript executed successfully.';
-        } else {
-          output = 'Python 3.9.7 - Ready to execute Python scripts';
-        }
-      } else if (trimmedCmd.startsWith('node') || trimmedCmd.startsWith('npm')) {
-        if (activeFile && activeFile.language === 'javascript') {
-          output = 'Hello from JavaScript!\nScript executed successfully.';
-        } else {
-          output = 'Node.js v16.14.0 - Ready to execute JavaScript';
-        }
-      } else if (trimmedCmd === 'clear') {
-        setHistory([]);
-        setIsRunning(false);
-        return;
-      } else if (trimmedCmd === 'help') {
-        output = `Available commands:
-ls         - List directory contents
-pwd        - Show current directory
-whoami     - Show current user
-date       - Show current date and time
-echo       - Display text
-cat        - Display file contents
-python/py  - Run Python scripts
-node/npm   - Run JavaScript/Node.js
-clear      - Clear terminal
-help       - Show this help message
-
-Mock terminal - commands are simulated for demo purposes.`;
-      } else {
-        output = `bash: ${trimmedCmd}: command not found`;
-        type = 'error';
-      }
-
-      // Update the last command with output
+      // Update the last command with results
       setHistory(prev => {
         const newHistory = [...prev];
         newHistory[newHistory.length - 1] = {
-          ...newHistory[newHistory.length - 1],
-          output,
-          type
+          command: result.command,
+          output: result.output,
+          type: result.exit_code === 0 ? 'success' : 'error',
+          working_directory: result.working_directory,
+          execution_time: result.execution_time
         };
         return newHistory;
       });
 
+      // Update working directory if command was successful
+      if (result.exit_code === 0) {
+        setWorkingDirectory(result.working_directory);
+      }
+
+    } catch (error) {
+      console.error('Error executing command:', error);
+      setError('Failed to execute command');
+      
+      // Update the last command with error
+      setHistory(prev => {
+        const newHistory = [...prev];
+        newHistory[newHistory.length - 1] = {
+          command: trimmedCmd,
+          output: `Error: ${error.message}`,
+          type: 'error',
+          working_directory: workingDirectory
+        };
+        return newHistory;
+      });
+    } finally {
       setIsRunning(false);
-    }, 500 + Math.random() * 1500);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -145,6 +145,20 @@ Mock terminal - commands are simulated for demo purposes.`;
     }
   };
 
+  const clearTerminal = async () => {
+    setHistory([]);
+    try {
+      await terminalAPI.clearHistory();
+    } catch (error) {
+      console.error('Error clearing terminal history:', error);
+    }
+  };
+
+  const getPrompt = () => {
+    const dir = workingDirectory.replace('/tmp/codeeditor', '~');
+    return `user@codeeditor:${dir}$`;
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -168,8 +182,9 @@ Mock terminal - commands are simulated for demo purposes.`;
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setHistory([])}
+            onClick={clearTerminal}
             className="text-xs px-2 h-6 hover:bg-gray-700"
+            disabled={isRunning}
           >
             Clear
           </Button>
@@ -184,18 +199,29 @@ Mock terminal - commands are simulated for demo purposes.`;
         </div>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700">
+          <div className="text-red-300 text-sm">{error}</div>
+        </div>
+      )}
+
       {/* Terminal Content */}
       <div 
         ref={terminalRef}
         className="flex-1 p-4 overflow-y-auto font-mono text-sm bg-gray-900 text-gray-100"
       >
         {/* Welcome message */}
-        <div className="text-green-400 mb-2">
-          Welcome to CodeEditor Terminal v1.0.0
-        </div>
-        <div className="text-gray-400 mb-4">
-          Type 'help' for available commands.
-        </div>
+        {history.length === 0 && (
+          <>
+            <div className="text-green-400 mb-2">
+              Welcome to CodeEditor Terminal v1.0.0
+            </div>
+            <div className="text-gray-400 mb-4">
+              Type 'help' for available commands.
+            </div>
+          </>
+        )}
 
         {/* Command history */}
         {history.map((entry, index) => (
@@ -203,7 +229,7 @@ Mock terminal - commands are simulated for demo purposes.`;
             <div className="flex items-center">
               <span className="text-green-400">user@codeeditor</span>
               <span className="text-white">:</span>
-              <span className="text-blue-400">~/projects</span>
+              <span className="text-blue-400">{entry.working_directory?.replace('/tmp/codeeditor', '~') || '~'}</span>
               <span className="text-white">$ </span>
               <span className="text-gray-100">{entry.command}</span>
             </div>
@@ -220,6 +246,11 @@ Mock terminal - commands are simulated for demo purposes.`;
                 Running...
               </div>
             )}
+            {entry.execution_time && (
+              <div className="text-xs text-gray-500 mt-1">
+                Executed in {(entry.execution_time * 1000).toFixed(0)}ms
+              </div>
+            )}
           </div>
         ))}
 
@@ -227,7 +258,7 @@ Mock terminal - commands are simulated for demo purposes.`;
         <form onSubmit={handleSubmit} className="flex items-center">
           <span className="text-green-400">user@codeeditor</span>
           <span className="text-white">:</span>
-          <span className="text-blue-400">~/projects</span>
+          <span className="text-blue-400">{workingDirectory.replace('/tmp/codeeditor', '~')}</span>
           <span className="text-white">$ </span>
           <Input
             ref={inputRef}

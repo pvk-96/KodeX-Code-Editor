@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,6 +11,7 @@ import {
   PencilIcon,
   MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
+import { fileAPI } from '../services/api';
 
 const FileTreeItem = ({ 
   item, 
@@ -26,11 +27,20 @@ const FileTreeItem = ({
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(item.name);
   const [showActions, setShowActions] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const inputRef = useRef(null);
 
-  const handleRename = () => {
+  const handleRename = async () => {
     if (newName.trim() && newName !== item.name) {
-      onRenameItem(item.id, newName.trim());
+      setIsLoading(true);
+      try {
+        await onRenameItem(item.path, newName.trim());
+      } catch (error) {
+        console.error('Error renaming item:', error);
+        setNewName(item.name); // Reset on error
+      } finally {
+        setIsLoading(false);
+      }
     }
     setIsRenaming(false);
   };
@@ -52,13 +62,15 @@ const FileTreeItem = ({
       <div
         className={`flex items-center py-1 px-2 hover:bg-gray-700 cursor-pointer group relative ${
           isSelected ? 'bg-blue-600' : ''
-        }`}
+        } ${isLoading ? 'opacity-50' : ''}`}
         style={{ paddingLeft: `${level * 16 + 8}px` }}
         onClick={() => {
-          if (item.type === 'folder') {
-            onToggleFolder(item.id);
-          } else {
-            onFileSelect(item);
+          if (!isLoading && !isRenaming) {
+            if (item.type === 'folder') {
+              onToggleFolder(item.id);
+            } else {
+              onFileSelect(item);
+            }
           }
         }}
         onMouseEnter={() => setShowActions(true)}
@@ -84,6 +96,7 @@ const FileTreeItem = ({
               onKeyPress={handleKeyPress}
               className="h-6 px-1 text-sm bg-gray-800 border-gray-600"
               autoFocus
+              disabled={isLoading}
             />
           ) : (
             <span className="text-sm text-gray-200 truncate">{item.name}</span>
@@ -91,7 +104,7 @@ const FileTreeItem = ({
         </div>
 
         {/* Action buttons */}
-        {showActions && !isRenaming && (
+        {showActions && !isRenaming && !isLoading && (
           <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {item.type === 'folder' && (
               <Button
@@ -100,7 +113,7 @@ const FileTreeItem = ({
                 className="h-5 w-5 p-0 hover:bg-gray-600"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onCreateFile(item.id);
+                  onCreateFile(item.path);
                 }}
               >
                 <PlusIcon className="w-3 h-3" />
@@ -123,7 +136,7 @@ const FileTreeItem = ({
               className="h-5 w-5 p-0 hover:bg-red-600"
               onClick={(e) => {
                 e.stopPropagation();
-                onDeleteItem(item.id);
+                onDeleteItem(item.path);
               }}
             >
               <TrashIcon className="w-3 h-3" />
@@ -131,38 +144,39 @@ const FileTreeItem = ({
           </div>
         )}
       </div>
-
-      {/* Children */}
-      {item.type === 'folder' && isExpanded && item.children && (
-        <div>
-          {item.children.map((child) => (
-            <FileTreeItem
-              key={child.id}
-              item={child}
-              level={level + 1}
-              onFileSelect={onFileSelect}
-              selectedFileId={selectedFileId}
-              onCreateFile={onCreateFile}
-              onDeleteItem={onDeleteItem}
-              onRenameItem={onRenameItem}
-              expandedFolders={expandedFolders}
-              onToggleFolder={onToggleFolder}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 };
 
 const FileExplorer = ({ 
-  fileSystem, 
   onFileSelect, 
   selectedFileId, 
-  onUpdateFileSystem 
+  onFileChange
 }) => {
-  const [expandedFolders, setExpandedFolders] = useState(new Set(['root', 'project1', 'project2']));
+  const [fileTree, setFileTree] = useState([]);
+  const [expandedFolders, setExpandedFolders] = useState(new Set(['root']));
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Load file tree on component mount
+  useEffect(() => {
+    loadFileTree();
+  }, []);
+
+  const loadFileTree = async (path = '/') => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const files = await fileAPI.getFileTree(path);
+      setFileTree(files);
+    } catch (error) {
+      console.error('Error loading file tree:', error);
+      setError('Failed to load files');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const toggleFolder = (folderId) => {
     const newExpanded = new Set(expandedFolders);
@@ -174,157 +188,117 @@ const FileExplorer = ({
     setExpandedFolders(newExpanded);
   };
 
-  const createFile = (parentId) => {
-    const newFile = {
-      id: `file_${Date.now()}`,
-      name: 'untitled.txt',
-      type: 'file',
-      language: 'plaintext',
-      content: ''
-    };
+  const createFile = async (parentPath) => {
+    try {
+      const fileName = prompt('Enter file name:');
+      if (!fileName) return;
 
-    const updateTree = (items) => {
-      return items.map(item => {
-        if (item.id === parentId) {
-          return {
-            ...item,
-            children: [...(item.children || []), newFile]
-          };
-        } else if (item.children) {
-          return {
-            ...item,
-            children: updateTree(item.children)
-          };
-        }
-        return item;
-      });
-    };
-
-    const updatedFileSystem = {
-      ...fileSystem,
-      children: parentId === 'root' 
-        ? [...fileSystem.children, newFile]
-        : updateTree(fileSystem.children)
-    };
-
-    onUpdateFileSystem(updatedFileSystem);
+      const isFolder = fileName.endsWith('/');
+      const cleanName = isFolder ? fileName.slice(0, -1) : fileName;
+      
+      await fileAPI.createFile(
+        cleanName,
+        parentPath,
+        isFolder ? 'folder' : 'file',
+        ''
+      );
+      
+      // Reload file tree
+      await loadFileTree();
+    } catch (error) {
+      console.error('Error creating file:', error);
+      alert('Failed to create file: ' + error.message);
+    }
   };
 
-  const deleteItem = (itemId) => {
-    const removeFromTree = (items) => {
-      return items.filter(item => {
-        if (item.id === itemId) {
-          return false;
-        }
-        if (item.children) {
-          return {
-            ...item,
-            children: removeFromTree(item.children)
-          };
-        }
-        return true;
-      }).map(item => {
-        if (item.children) {
-          return {
-            ...item,
-            children: removeFromTree(item.children)
-          };
-        }
-        return item;
-      });
-    };
+  const deleteItem = async (itemPath) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
 
-    const updatedFileSystem = {
-      ...fileSystem,
-      children: removeFromTree(fileSystem.children)
-    };
-
-    onUpdateFileSystem(updatedFileSystem);
+    try {
+      await fileAPI.deleteFile(itemPath);
+      await loadFileTree();
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      alert('Failed to delete item: ' + error.message);
+    }
   };
 
-  const renameItem = (itemId, newName) => {
-    const updateTree = (items) => {
-      return items.map(item => {
-        if (item.id === itemId) {
-          // Determine language from file extension
-          let language = 'plaintext';
-          if (item.type === 'file') {
-            const ext = newName.split('.').pop().toLowerCase();
-            const langMap = {
-              'js': 'javascript',
-              'jsx': 'javascript',
-              'ts': 'typescript',
-              'tsx': 'typescript',
-              'py': 'python',
-              'html': 'html',
-              'css': 'css',
-              'java': 'java',
-              'cpp': 'cpp',
-              'c': 'c',
-              'go': 'go',
-              'rs': 'rust',
-              'php': 'php',
-              'rb': 'ruby'
-            };
-            language = langMap[ext] || 'plaintext';
-          }
-          
-          return {
-            ...item,
-            name: newName,
-            language: item.type === 'file' ? language : undefined
-          };
-        } else if (item.children) {
-          return {
-            ...item,
-            children: updateTree(item.children)
-          };
-        }
-        return item;
-      });
-    };
-
-    const updatedFileSystem = {
-      ...fileSystem,
-      children: updateTree(fileSystem.children)
-    };
-
-    onUpdateFileSystem(updatedFileSystem);
+  const renameItem = async (itemPath, newName) => {
+    try {
+      await fileAPI.renameFile(itemPath, newName);
+      await loadFileTree();
+    } catch (error) {
+      console.error('Error renaming item:', error);
+      alert('Failed to rename item: ' + error.message);
+      throw error;
+    }
   };
 
-  const filterTree = (items, searchTerm) => {
-    if (!searchTerm) return items;
-    
-    return items.filter(item => {
-      if (item.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return true;
+  const handleFileSelect = async (file) => {
+    try {
+      // Load full file content if needed
+      const fullFile = await fileAPI.getFile(file.path);
+      onFileSelect(fullFile);
+    } catch (error) {
+      console.error('Error loading file:', error);
+      alert('Failed to load file: ' + error.message);
+    }
+  };
+
+  const searchFiles = async () => {
+    if (!searchTerm.trim()) {
+      await loadFileTree();
+      return;
+    }
+
+    try {
+      const results = await fileAPI.searchFiles(searchTerm);
+      setFileTree(results);
+    } catch (error) {
+      console.error('Error searching files:', error);
+      setError('Failed to search files');
+    }
+  };
+
+  // Trigger search when search term changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm) {
+        searchFiles();
+      } else {
+        loadFileTree();
       }
-      if (item.children) {
-        const filteredChildren = filterTree(item.children, searchTerm);
-        return filteredChildren.length > 0;
-      }
-      return false;
-    }).map(item => ({
-      ...item,
-      children: item.children ? filterTree(item.children, searchTerm) : undefined
-    }));
-  };
+    }, 300);
 
-  const displayedItems = filterTree(fileSystem.children || [], searchTerm);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   return (
     <Card className="w-80 h-full bg-gray-800 border-gray-700">
       <div className="p-3 border-b border-gray-700">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-200">Explorer</h2>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 w-6 p-0 hover:bg-gray-700"
-            onClick={() => createFile('root')}
-          >
-            <PlusIcon className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center space-x-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 hover:bg-gray-700"
+              onClick={() => createFile('/')}
+              title="Create file"
+            >
+              <PlusIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 hover:bg-gray-700"
+              onClick={() => loadFileTree()}
+              title="Refresh"
+              disabled={isLoading}
+            >
+              {isLoading ? '...' : '↻'}
+            </Button>
+          </div>
         </div>
         
         <div className="relative">
@@ -339,19 +313,50 @@ const FileExplorer = ({
       </div>
       
       <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
-        {displayedItems.map((item) => (
-          <FileTreeItem
-            key={item.id}
-            item={item}
-            onFileSelect={onFileSelect}
-            selectedFileId={selectedFileId}
-            onCreateFile={createFile}
-            onDeleteItem={deleteItem}
-            onRenameItem={renameItem}
-            expandedFolders={expandedFolders}
-            onToggleFolder={toggleFolder}
-          />
-        ))}
+        {error ? (
+          <div className="p-4 text-center text-red-400">
+            <p>{error}</p>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => loadFileTree()}
+              className="mt-2"
+            >
+              Retry
+            </Button>
+          </div>
+        ) : isLoading ? (
+          <div className="p-4 text-center text-gray-400">
+            <div className="animate-spin w-6 h-6 border-2 border-gray-600 border-t-blue-500 rounded-full mx-auto mb-2"></div>
+            <p>Loading files...</p>
+          </div>
+        ) : fileTree.length === 0 ? (
+          <div className="p-4 text-center text-gray-400">
+            <p>No files found</p>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => createFile('/')}
+              className="mt-2"
+            >
+              Create your first file
+            </Button>
+          </div>
+        ) : (
+          fileTree.map((item) => (
+            <FileTreeItem
+              key={item.id}
+              item={item}
+              onFileSelect={handleFileSelect}
+              selectedFileId={selectedFileId}
+              onCreateFile={createFile}
+              onDeleteItem={deleteItem}
+              onRenameItem={renameItem}
+              expandedFolders={expandedFolders}
+              onToggleFolder={toggleFolder}
+            />
+          ))
+        )}
       </div>
     </Card>
   );
