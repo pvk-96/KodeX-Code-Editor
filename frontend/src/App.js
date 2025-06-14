@@ -9,18 +9,25 @@ import LanguageInstaller from "./components/LanguageInstaller";
 import ThemeSelector from "./components/ThemeSelector";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
-import { mockFileSystem, mockThemes, mockCompletions } from "./mock/mockData";
+import { preferencesAPI, healthAPI } from "./services/api";
 
 const CodeEditorApp = () => {
-  const [fileSystem, setFileSystem] = useState(mockFileSystem);
   const [activeFile, setActiveFile] = useState(null);
   const [selectedFileId, setSelectedFileId] = useState(null);
-  const [theme, setTheme] = useState(mockThemes[0]); // Dark theme by default
+  const [theme, setTheme] = useState({ id: 'dark', name: 'Dark', primary: '#1e1e1e', secondary: '#252526', accent: '#007acc' });
+  const [preferences, setPreferences] = useState(null);
   const [showAI, setShowAI] = useState(false);
   const [showTerminal, setShowTerminal] = useState(true);
   const [showLanguageInstaller, setShowLanguageInstaller] = useState(false);
   const [showThemeSelector, setShowThemeSelector] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [isOnline, setIsOnline] = useState(true);
+  const [appError, setAppError] = useState(null);
+
+  // Load user preferences and check health on mount
+  useEffect(() => {
+    loadPreferences();
+    checkHealth();
+  }, []);
 
   // Apply theme to document
   useEffect(() => {
@@ -29,18 +36,32 @@ const CodeEditorApp = () => {
     document.documentElement.style.setProperty('--theme-accent', theme.accent);
   }, [theme]);
 
-  // Generate AI suggestions based on active file content
-  useEffect(() => {
-    if (activeFile && activeFile.content) {
-      const lastLine = activeFile.content.split('\n').pop();
-      const suggestions = Object.keys(mockCompletions)
-        .filter(key => lastLine.includes(key.trim()))
-        .map(key => mockCompletions[key]);
-      setAiSuggestions(suggestions.slice(0, 3));
-    } else {
-      setAiSuggestions([]);
+  const loadPreferences = async () => {
+    try {
+      const prefs = await preferencesAPI.getPreferences();
+      setPreferences(prefs);
+      
+      // Load themes and set current theme
+      const themes = await preferencesAPI.getThemes();
+      const currentTheme = themes.find(t => t.id === prefs.theme_id) || themes[0];
+      setTheme(currentTheme);
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+      // Use default preferences
     }
-  }, [activeFile]);
+  };
+
+  const checkHealth = async () => {
+    try {
+      const health = await healthAPI.check();
+      setIsOnline(health.status === 'healthy');
+      setAppError(null);
+    } catch (error) {
+      console.error('Health check failed:', error);
+      setIsOnline(false);
+      setAppError('Backend connection failed');
+    }
+  };
 
   const handleFileSelect = (file) => {
     setActiveFile(file);
@@ -48,26 +69,14 @@ const CodeEditorApp = () => {
   };
 
   const handleFileChange = (fileId, newContent) => {
-    const updateFileContent = (items) => {
-      return items.map(item => {
-        if (item.id === fileId) {
-          return { ...item, content: newContent };
-        }
-        if (item.children) {
-          return { ...item, children: updateFileContent(item.children) };
-        }
-        return item;
-      });
-    };
+    // Update active file content locally (will be saved by auto-save)
+    if (activeFile && activeFile.id === fileId) {
+      setActiveFile({ ...activeFile, content: newContent });
+    }
+  };
 
-    const updatedFileSystem = {
-      ...fileSystem,
-      children: updateFileContent(fileSystem.children)
-    };
-
-    setFileSystem(updatedFileSystem);
-    
-    // Update active file
+  const handleFileUpdate = (fileId, newContent) => {
+    // Handle file update confirmation from CodeEditor
     if (activeFile && activeFile.id === fileId) {
       setActiveFile({ ...activeFile, content: newContent });
     }
@@ -80,28 +89,20 @@ const CodeEditorApp = () => {
     }
   };
 
-  const findFileById = (items, fileId) => {
-    for (const item of items) {
-      if (item.id === fileId) {
-        return item;
-      }
-      if (item.children) {
-        const found = findFileById(item.children, fileId);
-        if (found) return found;
-      }
+  const handleThemeChange = async (newTheme) => {
+    setTheme(newTheme);
+    
+    try {
+      await preferencesAPI.updatePreferences({ theme_id: newTheme.id });
+    } catch (error) {
+      console.error('Error saving theme preference:', error);
     }
-    return null;
   };
 
-  // Update active file when file system changes
-  useEffect(() => {
-    if (selectedFileId) {
-      const updatedFile = findFileById(fileSystem.children, selectedFileId);
-      if (updatedFile) {
-        setActiveFile(updatedFile);
-      }
-    }
-  }, [fileSystem, selectedFileId]);
+  // Retry connection
+  const retryConnection = () => {
+    checkHealth();
+  };
 
   return (
     <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
@@ -151,20 +152,52 @@ const CodeEditorApp = () => {
           </Button>
           <div className="w-px h-4 bg-gray-600"></div>
           <div className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-xs text-gray-400">Online</span>
+            <div 
+              className={`w-2 h-2 rounded-full ${
+                isOnline ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+              }`}
+            ></div>
+            <span className="text-xs text-gray-400">
+              {isOnline ? 'Online' : 'Offline'}
+            </span>
+            {!isOnline && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={retryConnection}
+                className="text-xs px-2 h-5"
+              >
+                Retry
+              </Button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Error Banner */}
+      {appError && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700">
+          <div className="text-red-300 text-sm flex items-center justify-between">
+            <span>⚠️ {appError}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={retryConnection}
+              className="text-xs px-2 h-6"
+            >
+              Retry Connection
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* File Explorer Sidebar */}
         <FileExplorer
-          fileSystem={fileSystem}
           onFileSelect={handleFileSelect}
           selectedFileId={selectedFileId}
-          onUpdateFileSystem={setFileSystem}
+          onFileChange={handleFileChange}
         />
 
         {/* Main Editor Area */}
@@ -172,8 +205,8 @@ const CodeEditorApp = () => {
           <CodeEditor
             activeFile={activeFile}
             onFileChange={handleFileChange}
+            onFileUpdate={handleFileUpdate}
             theme={theme}
-            aiSuggestions={aiSuggestions}
           />
 
           {/* Terminal Panel */}
@@ -203,7 +236,7 @@ const CodeEditorApp = () => {
         isOpen={showThemeSelector}
         onToggle={() => setShowThemeSelector(false)}
         currentTheme={theme}
-        onThemeChange={setTheme}
+        onThemeChange={handleThemeChange}
       />
     </div>
   );
