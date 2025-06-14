@@ -227,7 +227,7 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
         {history.map((entry, index) => (
           <div key={index} className="mb-2">
             <div className="flex items-center">
-              <span className="text-green-400">user@codeeditor</span>
+              <span className="text-green-400">user@kodex</span>
               <span className="text-white">:</span>
               <span className="text-blue-400">{entry.working_directory?.replace('/tmp/codeeditor', '~') || '~'}</span>
               <span className="text-white">$ </span>
