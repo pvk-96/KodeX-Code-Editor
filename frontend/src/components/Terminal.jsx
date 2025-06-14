@@ -215,7 +215,7 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
         {history.length === 0 && (
           <>
             <div className="text-green-400 mb-2">
-              Welcome to CodeEditor Terminal v1.0.0
+              Welcome to KodeX Terminal v1.0.0
             </div>
             <div className="text-gray-400 mb-4">
               Type 'help' for available commands.
