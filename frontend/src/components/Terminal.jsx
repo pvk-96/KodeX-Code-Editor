@@ -256,7 +256,7 @@ const Terminal = ({ isOpen, onToggle, activeFile }) => {
 
         {/* Current input line */}
         <form onSubmit={handleSubmit} className="flex items-center">
-          <span className="text-green-400">user@codeeditor</span>
+          <span className="text-green-400">user@kodex</span>
           <span className="text-white">:</span>
           <span className="text-blue-400">{workingDirectory.replace('/tmp/codeeditor', '~')}</span>
           <span className="text-white">$ </span>
