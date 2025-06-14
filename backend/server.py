@@ -8,12 +8,16 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 # Import our models and services
-from .models import *
-from .ai_service import ai_service
-from .file_service import file_service
-from .terminal_service import terminal_service
-from .language_service import language_service
+from models import *
+from ai_service import ai_service
+from file_service import file_service
+from terminal_service import terminal_service
+from language_service import language_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
