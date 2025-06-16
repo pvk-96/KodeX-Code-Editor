@@ -65,3 +65,7 @@ code {
     --theme-secondary: #252526;
     --theme-accent: #007acc;
 }
+/* Hide Emergent badge */
+#emergent-badge {
+  display: none !important;
+}
