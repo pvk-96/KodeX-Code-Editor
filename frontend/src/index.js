@@ -8,4 +8,9 @@ root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
+// Remove Emergent badge on load
+document.addEventListener('DOMContentLoaded', () => {
+  const badge = document.getElementById('emergent-badge');
+  if (badge) badge.remove();
+});
 );
